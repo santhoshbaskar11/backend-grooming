@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────
 // server.js  –  Grooming Store Express Backend
+// Deployed at: https://backend-grooming-1.onrender.com
 // ─────────────────────────────────────────────
 
-// Load environment variables from a .env file (if present locally)
+// Load environment variables from .env (local development only)
 require('dotenv').config();
 
 // Import Express – our web-server framework
 const express = require('express');
 
-// Import CORS – allows browsers on different origins to call this API
+// Import CORS – allows the browser to call this API from a different origin
 const cors = require('cors');
 
 // Create the Express application
@@ -16,64 +17,60 @@ const app = express();
 
 // ─────────────────────────────────────────────
 // Port
-// Use the PORT env variable Render sets automatically,
-// or fall back to 5000 when running locally.
+// Render sets process.env.PORT automatically.
+// Falls back to 5000 when running locally.
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
 // ─────────────────────────────────────────────
-// CORS Configuration
-// Allow requests from:
-//   • your deployed GitHub Pages / Vercel frontend
-//   • localhost during local development
+// CORS — allow requests from our frontend origins
 // ─────────────────────────────────────────────
 const allowedOrigins = [
-  'https://santhoshbaskar11.github.io', // GitHub Pages frontend
-  'http://localhost:5173',               // Vite dev server (local)
-  'http://localhost:3000',               // CRA dev server (local)
+  'https://santhoshbaskar11.github.io', // GitHub Pages (production frontend)
+  'http://localhost:5173',               // Vite dev server (local development)
+  'http://localhost:3000',               // CRA dev server (alternative local)
 ];
 
+// Enable CORS with the whitelist above
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. curl, Postman, server-to-server)
+      // Allow requests with no origin header (e.g. Postman, curl, server-to-server)
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) {
-        // Origin is in the allowed list – permit the request
+        // Origin is allowed — proceed
         callback(null, true);
       } else {
-        // Origin is NOT allowed – reject with an error
-        callback(new Error(`CORS policy: origin '${origin}' is not allowed.`));
+        // Origin is NOT in the whitelist — reject
+        callback(new Error(`CORS: origin '${origin}' is not allowed`));
       }
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Permitted HTTP methods
-    allowedHeaders: ['Content-Type', 'Authorization'],     // Permitted request headers
-    credentials: true,                                     // Allow cookies / auth headers
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
   })
 );
 
-// Parse JSON request bodies (makes req.body available in POST / PUT routes)
+// Parse incoming JSON request bodies
 app.use(express.json());
 
 // ─────────────────────────────────────────────
-// Routes
+// Routes  (existing routes kept unchanged)
 // ─────────────────────────────────────────────
 
-// Health-check / test route
-// GET https://YOUR-BACKEND.onrender.com/api/test
-app.get('/api/test', (req, res) => {
-  // Return a JSON response so the frontend can confirm connectivity
-  res.json({
-    message: 'Backend is working!',
-    timestamp: new Date().toISOString(), // Useful for debugging cache issues
-    environment: process.env.NODE_ENV || 'development',
-  });
-});
-
-// Root route – helpful if someone visits the bare domain
+// Root health-check — confirms the server is online
 app.get('/', (req, res) => {
   res.json({ status: 'Grooming Store API is online 🚀' });
+});
+
+// Test route — used by the frontend to verify connectivity
+// GET https://backend-grooming-1.onrender.com/api/test
+app.get('/api/test', (req, res) => {
+  res.json({
+    message: 'Backend is working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+  });
 });
 
 // ─────────────────────────────────────────────
