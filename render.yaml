@@ -1,0 +1,15 @@
+# ─────────────────────────────────────────
+# Render deployment configuration
+# ─────────────────────────────────────────
+services:
+  - type: web
+    name: grooming-store-backend
+    env: node
+    rootDir: backend          # folder inside the repo that contains server.js
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000

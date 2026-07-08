@@ -1,42 +1,86 @@
-// Import the 'express' package so we can create a web server
+// ─────────────────────────────────────────────
+// server.js  –  Grooming Store Express Backend
+// ─────────────────────────────────────────────
+
+// Load environment variables from a .env file (if present locally)
+require('dotenv').config();
+
+// Import Express – our web-server framework
 const express = require('express');
 
-// Import the 'cors' package to allow requests from different origins (e.g. your React frontend)
+// Import CORS – allows browsers on different origins to call this API
 const cors = require('cors');
 
-// Create an Express application instance
+// Create the Express application
 const app = express();
 
-// Define the port number the server will listen on
-const PORT = 5000;
+// ─────────────────────────────────────────────
+// Port
+// Use the PORT env variable Render sets automatically,
+// or fall back to 5000 when running locally.
+// ─────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
 
 // ─────────────────────────────────────────────
-// Middleware
+// CORS Configuration
+// Allow requests from:
+//   • your deployed GitHub Pages / Vercel frontend
+//   • localhost during local development
 // ─────────────────────────────────────────────
+const allowedOrigins = [
+  'https://santhoshbaskar11.github.io', // GitHub Pages frontend
+  'http://localhost:5173',               // Vite dev server (local)
+  'http://localhost:3000',               // CRA dev server (local)
+];
 
-// Enable CORS so the frontend (running on a different port) can talk to this server
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. curl, Postman, server-to-server)
+      if (!origin) return callback(null, true);
 
-// Parse incoming requests with JSON payloads (makes req.body available)
+      if (allowedOrigins.includes(origin)) {
+        // Origin is in the allowed list – permit the request
+        callback(null, true);
+      } else {
+        // Origin is NOT allowed – reject with an error
+        callback(new Error(`CORS policy: origin '${origin}' is not allowed.`));
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Permitted HTTP methods
+    allowedHeaders: ['Content-Type', 'Authorization'],     // Permitted request headers
+    credentials: true,                                     // Allow cookies / auth headers
+  })
+);
+
+// Parse JSON request bodies (makes req.body available in POST / PUT routes)
 app.use(express.json());
 
 // ─────────────────────────────────────────────
 // Routes
 // ─────────────────────────────────────────────
 
-// Define a GET route at /api/test
-// When someone visits http://localhost:5000/api/test, this function runs
+// Health-check / test route
+// GET https://YOUR-BACKEND.onrender.com/api/test
 app.get('/api/test', (req, res) => {
-  // Send back a JSON response with a success message
-  res.json({ message: 'Backend is working!' });
+  // Return a JSON response so the frontend can confirm connectivity
+  res.json({
+    message: 'Backend is working!',
+    timestamp: new Date().toISOString(), // Useful for debugging cache issues
+    environment: process.env.NODE_ENV || 'development',
+  });
+});
+
+// Root route – helpful if someone visits the bare domain
+app.get('/', (req, res) => {
+  res.json({ status: 'Grooming Store API is online 🚀' });
 });
 
 // ─────────────────────────────────────────────
 // Start the Server
 // ─────────────────────────────────────────────
-
-// Tell the server to start listening for requests on PORT 5000
 app.listen(PORT, () => {
-  // This message prints to the terminal once the server is ready
   console.log(`✅ Server is running on http://localhost:${PORT}`);
+  console.log(`🌍 Environment : ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Test route  : http://localhost:${PORT}/api/test`);
 });
