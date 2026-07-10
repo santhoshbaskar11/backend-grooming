@@ -76,6 +76,43 @@ app.get('/api/test', (req, res) => {
   });
 });
 
+// Diagnostic route — tests Supabase credentials and connection schema
+app.get('/api/test-supabase', async (req, res) => {
+  const getSupabase = require('./config/supabase');
+  const diagnostics = {
+    supabaseUrlSet:            !!process.env.SUPABASE_URL,
+    supabaseServiceRoleKeySet: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl:               process.env.SUPABASE_URL || 'NOT SET',
+    errors:                    []
+  };
+
+  try {
+    const supabase = getSupabase();
+    
+    // 1. Check customers table
+    const { data: custData, error: custError } = await supabase.from('customers').select('id').limit(1);
+    diagnostics.customersTableConnection = {
+      success:  !custError,
+      message:  custError ? custError.message : 'Successfully connected to customers table.',
+      rowCount: custData ? custData.length : 0
+    };
+
+    // 2. Check payments table
+    const { data: payData, error: payError } = await supabase.from('payments').select('*').limit(1);
+    diagnostics.paymentsTableConnection = {
+      success: !payError,
+      message: payError ? payError.message : 'Successfully connected to payments table.',
+      columns: payData && payData[0] ? Object.keys(payData[0]) : []
+    };
+
+  } catch (err) {
+    diagnostics.errors.push(err.message);
+  }
+
+  return res.json(diagnostics);
+});
+
+
 // ─────────────────────────────────────────────
 // Payment Routes (Razorpay)
 // ─────────────────────────────────────────────
