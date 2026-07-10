@@ -3,12 +3,13 @@
 //
 // Razorpay payment routes:
 //   POST /api/payment/create-order  → creates a Razorpay order
-//   POST /api/payment/verify        → verifies signature + logs all details
+//   POST /api/payment/verify        → verifies signature + saves transaction to Supabase
 // ─────────────────────────────────────────────────────────────
 
 const express     = require('express');
 const crypto      = require('crypto'); // Node built-in — no install needed
 const getRazorpay = require('../config/razorpay');
+const getSupabase = require('../config/supabase');
 
 const router = express.Router();
 
@@ -85,13 +86,15 @@ router.post('/create-order', async (req, res) => {
 //
 // Called by the frontend after the Razorpay checkout modal
 // reports success. Verifies the HMAC-SHA256 signature and
-// logs full payment details to Render logs.
+// automatically inserts transaction logs into Supabase using
+// the Service Role Key client.
 //
 // Request body:
 //   {
 //     razorpay_order_id:   "order_...",
 //     razorpay_payment_id: "pay_...",
 //     razorpay_signature:  "<hmac-sha256>",
+//     order_id:            "uuid...",     ← Supabase Order UUID
 //     amount_rupees:       499,           ← ₹ amount (passed from frontend)
 //     amount_paise:        49900,         ← paise amount (from Razorpay order)
 //     currency:            "INR",
@@ -107,7 +110,7 @@ router.post('/verify', async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-      // Amount fields — frontend must pass these for logging & storage
+      order_id, // The UUID of the order in Supabase
       amount_rupees,
       amount_paise,
       currency     = 'INR',
@@ -166,34 +169,129 @@ router.post('/verify', async (req, res) => {
       });
     }
 
-    // ── ✅ Payment is genuine — log everything to Render ─────────
+    // ── Get Supabase client initialized with Service Role Key ──────
+    let supabase;
+    try {
+      supabase = getSupabase();
+    } catch (supabaseInitErr) {
+      console.error('❌ Supabase initialization failed:', supabaseInitErr.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection config error.',
+        error: supabaseInitErr.message,
+      });
+    }
+
+    // ── Attempt to lookup customer ID if customer_email is available 
+    let customer_uuid = null;
+    if (customer_email && customer_email !== 'Unknown') {
+      const { data: custData } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('email', customer_email)
+        .limit(1);
+      if (custData && custData.length > 0) {
+        customer_uuid = custData[0].id;
+      }
+    }
+
+    // ── Save transaction details to Supabase payments table ──────────
+    // Uses both new column names and old column names for maximum compatibility
+    const verifiedTimestamp = new Date().toISOString();
+    const insertPayload = {
+      // User's requested columns:
+      payment_id:          razorpay_payment_id,
+      order_id:            order_id || null, // Supabase UUID
+      amount:              rupees || 0,
+      currency:            currency,
+      status:              'Success',
+      customer_name:       customer_name,
+      customer_email:      customer_email,
+      verified_at:         verifiedTimestamp,
+      created_at:          verifiedTimestamp,
+
+      // Extra metadata for backward-compatibility & analytics:
+      customer_id:         customer_uuid,
+      razorpay_order_id:   razorpay_order_id,
+      razorpay_payment_id: razorpay_payment_id,
+      razorpay_signature:  razorpay_signature,
+      payment_method:      'Razorpay',
+      payment_status:      'Success',
+      transaction_date:    verifiedTimestamp,
+      updated_at:          verifiedTimestamp
+    };
+
+    console.log('💾 [Supabase Insert] Attempting to save payment:', insertPayload);
+
+    const { data: insertData, error: insertError } = await supabase
+      .from('payments')
+      .upsert(insertPayload, { onConflict: 'razorpay_payment_id' })
+      .select();
+
+    console.log('💾 [Supabase Response] Data:', insertData);
+    console.log('💾 [Supabase Response] Error:', insertError);
+
+    // If the database insert fails, return a 500 error instead of silently succeeding
+    if (insertError) {
+      console.error('❌ Supabase payments table insert failed:', insertError);
+      return res.status(500).json({
+        success: false,
+        message: `Database insert failed: ${insertError.message}`,
+        error: insertError,
+      });
+    }
+
+    // ── Update the related order status in Supabase ──────────────────
+    if (order_id) {
+      console.log(`💾 [Supabase Update] Confirming order status for: ${order_id}`);
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .update({
+          order_status:        'Confirmed',
+          payment_status:      'Paid',
+          razorpay_payment_id: razorpay_payment_id,
+          razorpay_order_id:   razorpay_order_id,
+          payment_method:      'Razorpay',
+          updated_at:          verifiedTimestamp
+        })
+        .eq('id', order_id)
+        .select();
+
+      if (orderError) {
+        console.warn('⚠️  Supabase order status update failed:', orderError.message);
+      } else {
+        console.log('✅ Supabase order status updated to Confirmed + Paid:', orderData);
+      }
+    }
+
+    // ── ✅ Payment verified and stored — log to Render ────────────────
     console.log('═══════════════════════════════════════════════');
-    console.log('✅ PAYMENT VERIFIED SUCCESSFULLY');
+    console.log('✅ PAYMENT VERIFIED & SAVED TO DATABASE');
     console.log('───────────────────────────────────────────────');
     console.log(`   Payment ID    : ${razorpay_payment_id}`);
-    console.log(`   Order ID      : ${razorpay_order_id}`);
+    console.log(`   Order ID      : ${order_id || 'N/A'}`);
+    console.log(`   Razorpay Order: ${razorpay_order_id}`);
     console.log(`   Amount Paid   : ₹${rupees !== null ? rupees.toFixed(2) : 'MISSING'}`);
-    console.log(`   Amount (paise): ${paise !== null ? paise : 'MISSING'}`);
     console.log(`   Currency      : ${currency}`);
     console.log(`   Customer Name : ${customer_name}`);
     console.log(`   Customer Email: ${customer_email}`);
     console.log(`   Payment Status: SUCCESS`);
-    console.log(`   Verified At   : ${new Date().toISOString()}`);
+    console.log(`   DB Insert ID  : ${insertData && insertData[0] ? insertData[0].id : 'N/A'}`);
+    console.log(`   Verified At   : ${verifiedTimestamp}`);
     console.log('═══════════════════════════════════════════════');
 
-    // Return all verified details to the frontend so it can save to DB
     return res.status(200).json({
       success:        true,
-      message:        'Payment verified successfully!',
+      message:        'Payment verified and stored successfully!',
       payment_id:     razorpay_payment_id,
-      order_id:       razorpay_order_id,
+      order_id:       order_id,
       amount_rupees:  rupees,
       amount_paise:   paise,
       currency:       currency,
       customer_name:  customer_name,
       customer_email: customer_email,
       payment_status: 'Paid',
-      verified_at:    new Date().toISOString(),
+      verified_at:    verifiedTimestamp,
     });
 
   } catch (error) {
