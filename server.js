@@ -12,6 +12,9 @@ const express = require('express');
 // Import CORS – allows the browser to call this API from a different origin
 const cors = require('cors');
 
+// Import the Razorpay payment routes
+const paymentRoutes = require('./routes/payment');
+
 // Create the Express application
 const app = express();
 
@@ -72,6 +75,14 @@ app.get('/api/test', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
   });
 });
+
+// ─────────────────────────────────────────────
+// Payment Routes (Razorpay)
+// ─────────────────────────────────────────────
+// Mounts all routes in routes/payment.js under /api/payment
+// POST /api/payment/create-order  — create a Razorpay order
+// POST /api/payment/verify        — verify payment signature
+app.use('/api/payment', paymentRoutes);
 
 // ─────────────────────────────────────────────
 // Start the Server
