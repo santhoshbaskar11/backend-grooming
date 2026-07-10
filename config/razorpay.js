@@ -1,25 +1,44 @@
 // ─────────────────────────────────────────────────────────────
 // backend/config/razorpay.js
 //
-// Initialises and exports a single Razorpay SDK instance.
-// All payment routes import this file — credentials are read
-// from environment variables, NEVER hardcoded here.
+// Returns a Razorpay instance on demand.
+// Uses a lazy singleton pattern so the server starts successfully
+// even if keys aren't loaded yet, and only fails when a payment
+// route is actually called without valid credentials.
 // ─────────────────────────────────────────────────────────────
 
 const Razorpay = require('razorpay');
 
-// Validate that both keys exist before starting the server
-if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-  throw new Error(
-    '❌ Razorpay credentials are missing!\n' +
-    '   Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to backend/.env'
-  );
-}
+let _instance = null;
 
-// Create and export the Razorpay instance
-const razorpayInstance = new Razorpay({
-  key_id:     process.env.RAZORPAY_KEY_ID,     // rzp_test_TBoGLRLCURaigU
-  key_secret: process.env.RAZORPAY_KEY_SECRET, // poSX7HoZnSVCzkWoJE5kPJ4c
-});
+/**
+ * getRazorpay()
+ * Returns the shared Razorpay SDK instance.
+ * Throws a clear error if credentials are missing in the environment.
+ */
+const getRazorpay = () => {
+  // Return cached instance if already created
+  if (_instance) return _instance;
 
-module.exports = razorpayInstance;
+  const keyId     = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  // Validate credentials at call-time, not at require-time
+  // This way the server starts even if keys are missing,
+  // and only the payment routes fail with a clear message.
+  if (!keyId || !keySecret) {
+    throw new Error(
+      'Razorpay credentials are missing. ' +
+      'Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your Render environment variables.'
+    );
+  }
+
+  _instance = new Razorpay({
+    key_id:     keyId,
+    key_secret: keySecret,
+  });
+
+  return _instance;
+};
+
+module.exports = getRazorpay;

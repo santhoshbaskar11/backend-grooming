@@ -6,9 +6,9 @@
 //   POST /api/payment/verify        → verifies payment signature
 // ─────────────────────────────────────────────────────────────
 
-const express  = require('express');
-const crypto   = require('crypto');          // Node built-in — no install needed
-const razorpay = require('../config/razorpay');
+const express    = require('express');
+const crypto     = require('crypto');          // Node built-in — no install needed
+const getRazorpay = require('../config/razorpay');
 
 const router = express.Router();
 
@@ -24,6 +24,9 @@ const router = express.Router();
 // ─────────────────────────────────────────────────────────────
 router.post('/create-order', async (req, res) => {
   try {
+    // Get (or create) the Razorpay instance — throws if credentials are missing
+    const razorpay = getRazorpay();
+
     const { amount, currency = 'INR', receipt } = req.body;
 
     // Validate amount
@@ -63,8 +66,10 @@ router.post('/create-order', async (req, res) => {
     console.error('❌ Razorpay create-order error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to create Razorpay order. Please try again.',
-      error:   process.env.NODE_ENV === 'development' ? error.message : undefined,
+      message: error.message.includes('credentials')
+        ? '❌ Razorpay is not configured on the server. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to Render environment variables.'
+        : 'Failed to create Razorpay order. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
