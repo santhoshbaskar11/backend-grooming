@@ -6,6 +6,26 @@
 // Load environment variables from .env (local development only)
 require('dotenv').config();
 
+// ─────────────────────────────────────────────────────────────
+// Supabase Environment Variable Startup Validation
+// ─────────────────────────────────────────────────────────────
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+console.log('─────────────────────────────────────────');
+console.log('🔍 Supabase Startup Diagnostics:');
+console.log(`   SUPABASE_URL             : ${supabaseUrl ? 'Configured ✅' : 'MISSING ❌'}`);
+console.log(`   SUPABASE_SERVICE_ROLE_KEY: ${supabaseKey ? 'Configured ✅' : 'MISSING ❌'}`);
+console.log('─────────────────────────────────────────');
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ CRITICAL ERROR: Supabase configuration is incomplete.');
+  console.error('   Please define SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment.');
+  console.error('   Server startup aborted.');
+  process.exit(1); // Exit server process to fail startup eagerly on Render
+}
+
+
 // Import Express – our web-server framework
 const express = require('express');
 
